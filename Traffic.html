@@ -1,0 +1,267 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Traffic Violation Reporting App</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background: #f4f6f8;
+      margin: 0;
+      padding: 20px;
+      color: #333;
+    }
+    h1 {
+      text-align: center;
+      color: #007bff;
+    }
+    form {
+      max-width: 600px;
+      margin: 0 auto 40px auto;
+      background: white;
+      padding: 20px;
+      border-radius: 8px;
+      box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+    }
+    label {
+      display: block;
+      margin-top: 15px;
+      font-weight: bold;
+    }
+    select, input[type="text"], textarea {
+      width: 100%;
+      padding: 8px;
+      margin-top: 6px;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+      box-sizing: border-box;
+      resize: vertical;
+    }
+    input[type="file"] {
+      margin-top: 6px;
+    }
+    button {
+      margin-top: 20px;
+      background-color: #007bff;
+      border: none;
+      color: white;
+      padding: 12px 20px;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 16px;
+      width: 100%;
+    }
+    button:hover {
+      background-color: #0056b3;
+    }
+    .location-status {
+      font-size: 0.9em;
+      color: #555;
+      margin-top: 8px;
+    }
+    #reports {
+      max-width: 700px;
+      margin: 0 auto;
+    }
+    .report {
+      background: white;
+      border-radius: 8px;
+      padding: 15px;
+      margin-bottom: 20px;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.1);
+    }
+    .report h3 {
+      margin-top: 0;
+      color: #007bff;
+    }
+    .report img, .report video {
+      max-width: 100%;
+      border-radius: 6px;
+      margin-top: 10px;
+    }
+    .report small {
+      color: #666;
+    }
+  </style>
+</head>
+<body>
+
+  <h1>Traffic Violation Reporting</h1>
+  <form id="violationForm">
+    <label for="violationType">Violation Type *</label>
+    <select id="violationType" required>
+      <option value="">Select Violation</option>
+      <option>Speeding</option>
+      <option>Running Red Light</option>
+      <option>Illegal Parking</option>
+      <option>Reckless Driving</option>
+      <option>No Seatbelt/Helmet</option>
+      <option>Using Phone While Driving</option>
+      <option>Drunk Driving</option>
+      <option>Other</option>
+    </select>
+
+    <label for="description">Description (optional)</label>
+    <textarea id="description" rows="3" placeholder="Add any details..."></textarea>
+
+    <label for="media">Upload Photo/Video (optional)</label>
+    <input type="file" id="media" accept="image/*,video/*" />
+
+    <label>Location *</label>
+    <div class="location-status" id="locationStatus">Getting your location...</div>
+
+    <button type="submit">Submit Report</button>
+  </form>
+
+  <section id="reports">
+    <h2>Submitted Reports</h2>
+    <div id="reportsList">
+      <!-- Reports will appear here -->
+    </div>
+  </section>
+
+  <!-- Firebase SDK (Modular v9) -->
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/9.6.1/firebase-app.js";
+    import { getFirestore, collection, addDoc, getDocs, query, orderBy } from "https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore.js";
+    import { getStorage, ref, uploadBytes, getDownloadURL } from "https://www.gstatic.com/firebasejs/9.6.1/firebase-storage.js";
+
+    const firebaseConfig = {
+  apiKey: "AIzaSyDg9Lc97Nq-CNiAqREIdbiq-D7AdvUtvvg",
+  authDomain: "traffic-violation-app-63a71.firebaseapp.com",
+  projectId: "traffic-violation-app-63a71",
+  storageBucket: "traffic-violation-app-63a71.firebasestorage.app",
+  messagingSenderId: "87057307519",
+  appId: "1:87057307519:web:dcbb0b2f2744799924ac4a"
+};
+
+    // Initialize Firebase
+    const app = initializeApp(firebaseConfig);
+    const db = getFirestore(app);
+    const storage = getStorage(app);
+
+    const locationStatus = document.getElementById('locationStatus');
+    const form = document.getElementById('violationForm');
+    const reportsList = document.getElementById('reportsList');
+    let userLocation = null;
+
+    // Get user's location
+    function getLocation() {
+      if (!navigator.geolocation) {
+        locationStatus.textContent = 'Geolocation is not supported by your browser.';
+        return;
+      }
+      navigator.geolocation.getCurrentPosition(
+        (position) => {
+          userLocation = {
+            latitude: position.coords.latitude.toFixed(5),
+            longitude: position.coords.longitude.toFixed(5)
+          };
+          locationStatus.textContent = `Location detected: Lat ${userLocation.latitude}, Lon ${userLocation.longitude}`;
+        },
+        () => {
+          locationStatus.textContent = 'Unable to retrieve your location.';
+        }
+      );
+    }
+    getLocation();
+
+    // Save report to Firebase
+    async function saveReport(mediaFile, violationType, description) {
+      try {
+        let mediaURL = null;
+
+        if (mediaFile) {
+          const storageRef = ref(storage, "reports/" + Date.now() + "-" + mediaFile.name);
+          await uploadBytes(storageRef, mediaFile);
+          mediaURL = await getDownloadURL(storageRef);
+        }
+
+        await addDoc(collection(db, "violationReports"), {
+          type: violationType,
+          description,
+          location: userLocation,
+          timestamp: Date.now(),
+          mediaURL: mediaURL,
+          reporter: "anonymous"
+        });
+
+        alert("✅ Report submitted!");
+        form.reset();
+        locationStatus.textContent = `Location detected: Lat ${userLocation.latitude}, Lon ${userLocation.longitude}`;
+        loadReports();
+
+      } catch (error) {
+        console.error("Error saving report: ", error);
+        alert("❌ Failed to submit report.");
+      }
+    }
+
+    // Load reports from Firebase
+    async function loadReports() {
+      reportsList.innerHTML = "<p>Loading reports...</p>";
+
+      const q = query(collection(db, "violationReports"), orderBy("timestamp", "desc"));
+      const snapshot = await getDocs(q);
+
+      reportsList.innerHTML = "";
+      if (snapshot.empty) {
+        reportsList.innerHTML = "<p>No reports submitted yet.</p>";
+        return;
+      }
+
+      snapshot.forEach(doc => {
+        const report = doc.data();
+        const div = document.createElement("div");
+        div.className = "report";
+        div.innerHTML = `
+          <h3>${report.type}</h3>
+          <p>${report.description || ""}</p>
+          <small><strong>Location:</strong> Lat ${report.location.latitude}, Lon ${report.location.longitude}</small><br/>
+          <small><strong>Time:</strong> ${new Date(report.timestamp).toLocaleString()}</small>
+        `;
+
+        if (report.mediaURL) {
+          if (report.mediaURL.includes(".mp4") || report.mediaURL.includes("video")) {
+            const video = document.createElement("video");
+            video.src = report.mediaURL;
+            video.controls = true;
+            div.appendChild(video);
+          } else {
+            const img = document.createElement("img");
+            img.src = report.mediaURL;
+            div.appendChild(img);
+          }
+        }
+
+        reportsList.appendChild(div);
+      });
+    }
+
+    // Form submit
+    form.addEventListener("submit", async (e) => {
+      e.preventDefault();
+
+      if (!userLocation) {
+        alert("Please allow location access.");
+        return;
+      }
+
+      const violationType = form.violationType.value;
+      if (!violationType) {
+        alert("Please select a violation type.");
+        return;
+      }
+
+      const description = form.description.value.trim();
+      const mediaFile = form.media.files[0];
+
+      await saveReport(mediaFile, violationType, description);
+    });
+
+    // Load reports on page start
+    loadReports();
+  </script>
+</body>
+</html>
